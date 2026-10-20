@@ -123,12 +123,24 @@ def cdsxmatch(
     |  b|  26.24497|-26.7569436|        Star|
     +---+----------+-----------+------------+
     <BLANKLINE>
+
+    An unreachable or slow service returns Fail
+    >>> from unittest import mock
+    >>> n = len(id)
+    >>> args = [
+    ...     pd.Series(id), pd.Series(ra), pd.Series(dec), pd.Series([1.0] * n),
+    ...     pd.Series(["simbad"] * n), pd.Series(["otype,main_id"] * n)]
+    >>> for err in [requests.exceptions.ConnectionError, requests.exceptions.Timeout]:
+    ...     with mock.patch("requests.post", side_effect=err):
+    ...         print(cdsxmatch.func(*args).tolist())
+    ['Fail,Fail', 'Fail,Fail']
+    ['Fail,Fail', 'Fail,Fail']
     """
     # If nothing
     if len(ra) == 0:
         return pd.Series([])
 
-    # Catch TimeoutError and ConnectionError
+    # Catch RequestException
     try:
         # Build a catalog of alert in a CSV-like string
         table_header = """ra_in,dec_in,objectId\n"""
@@ -148,6 +160,7 @@ def cdsxmatch(
                 "colDec1": "dec_in",
             },
             files={"cat1": table},
+            timeout=(5, 60),
         )
 
         if r.status_code != 200:
@@ -189,7 +202,7 @@ def cdsxmatch(
                 # single column to return
                 return pdf_out[cols[0]].astype(str)
 
-    except (ConnectionError, TimeoutError, ValueError) as ce:
+    except (requests.exceptions.RequestException, ValueError) as ce:
         logging.warning("XMATCH failed " + repr(ce))
         ncols = len(cols.to_numpy()[0].split(","))
         name = ",".join(["Fail"] * ncols)
